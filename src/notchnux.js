@@ -244,6 +244,29 @@ export const NotchNux = GObject.registerClass({
 
         this._monitorsChangedId = Main.layoutManager.connect('monitors-changed', () => this.reposition());
         this.reposition();
+        // At boot the shell is still settling (monitor config, startup
+        // animation, overview) when we mount, and the notch could stay hidden
+        // until something fired 'monitors-changed'. Re-place it once startup
+        // completes and a few times shortly after, and whenever the overview closes.
+        let resync = () => {
+            if (this._destroyed) return;
+            this.show();
+            this.reposition();
+            this._raiseToTop();
+        };
+        this._startupResyncIds = [];
+        if (Main.layoutManager._startingUp)
+            this._startupCompleteId = Main.layoutManager.connect('startup-complete', resync);
+        for (let s of [1, 3, 6])
+        {
+            let id = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, s, () => {
+                this._startupResyncIds = this._startupResyncIds.filter(x => x !== id);
+                resync();
+                return GLib.SOURCE_REMOVE;
+            });
+            this._startupResyncIds.push(id);
+        }
+        this._overviewHiddenId = Main.overview.connect('hidden', resync);
         // Files dragged from other apps open the Shelf and can be dropped on it.
         this._initFileDrop();
 
@@ -556,6 +579,17 @@ export const NotchNux = GObject.registerClass({
             this._restackedId = 0;
         }
         this._monitorsChangedId = 0;
+        for (let id of this._startupResyncIds ?? [])
+            GLib.Source.remove(id);
+        this._startupResyncIds = [];
+        if (this._startupCompleteId) {
+            Main.layoutManager.disconnect(this._startupCompleteId);
+            this._startupCompleteId = 0;
+        }
+        if (this._overviewHiddenId) {
+            Main.overview.disconnect(this._overviewHiddenId);
+            this._overviewHiddenId = 0;
+        }
     }
 
     // Pending hover expand/collapse. Cleared on an explicit collapse so a
