@@ -262,7 +262,7 @@ export class WeatherHelper {
                             let [props] = r.recursiveUnpack();
                             let lat = Number(props.Latitude), lon = Number(props.Longitude);
                             this._finishGeoClue(geo, Number.isFinite(lat) && Number.isFinite(lon)
-                                ? { lat, lon, city: props.Description || null } : null);
+                                ? { lat, lon, city: null } : null);  // Description is a source label ("ipf fallback…"), not a city: reverse-geocode instead
                         });
                 });
             setProp('DesktopId', new GLib.Variant('s', 'notchnux'), () =>

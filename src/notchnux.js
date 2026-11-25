@@ -3401,6 +3401,8 @@ export const NotchNux = GObject.registerClass({
         // time), and any in-flight connect attempts.
         let expanded = null;
         let connecting = new Set();
+        // Saved networks whose stored password just failed: ask for a new one.
+        let needPassword = new Set();
 
         // The periodic refresh skips unchanged lists and never rebuilds while
         // a password field is open (that used to wipe what you were typing).
@@ -3437,7 +3439,7 @@ export const NotchNux = GObject.registerClass({
                 if (ap.secure)
                     inner.add_child(new St.Icon({ icon_name: 'channel-secure-symbolic', icon_size: 12,
                         style_class: 'nook-scan-row-lock', y_align: Clutter.ActorAlign.CENTER }));
-                let sub = busy ? 'Connecting…' : ap.active ? 'Connected' : '';
+                let sub = busy ? 'Connecting…' : ap.active ? 'Connected' : ap.saved ? 'Saved' : '';
                 if (sub)
                     inner.add_child(new St.Label({ text: sub, style_class: 'nook-scan-row-sub',
                         y_align: Clutter.ActorAlign.CENTER }));
@@ -3449,6 +3451,10 @@ export const NotchNux = GObject.registerClass({
                     refresh();
                     this._system.connectWifi(ap.ssid, password, (ok, err) => {
                         connecting.delete(ap.ssid);
+                        if (!ok && ap.saved && !password && err !== 'not in range') {
+                            needPassword.add(ap.ssid);
+                            expanded = ap.ssid;
+                        }
                         if (!ok)
                             Main.notify('NotchNux Wi-Fi',
                                 err === 'not in range'
@@ -3470,8 +3476,21 @@ export const NotchNux = GObject.registerClass({
                 }
                 ov.body.add_child(row);
 
+                // Saved network: the password is already stored, so only a
+                // Connect button appears (unless the last attempt failed).
+                let wantsPassword = ap.secure && (!ap.saved || needPassword.has(ap.ssid));
+                if (ap.secure && expanded === ap.ssid && !busy && !wantsPassword) {
+                    let goRow = new St.BoxLayout({ style_class: 'nook-scan-pw', vertical: false, x_expand: true });
+                    goRow.add_child(new St.Widget({ x_expand: true }));
+                    let go = new St.Button({ style_class: 'nook-scan-connect', reactive: true, can_focus: true });
+                    go.set_child(new St.Label({ text: 'Connect' }));
+                    go.connect('clicked', () => connect(''));
+                    goRow.add_child(go);
+                    ov.body.add_child(goRow);
+                }
+
                 // Inline password entry for the expanded secure network.
-                if (ap.secure && expanded === ap.ssid && !busy) {
+                if (wantsPassword && expanded === ap.ssid && !busy) {
                     let pwRow = new St.BoxLayout({ style_class: 'nook-scan-pw', vertical: false, x_expand: true });
                     let entry = new St.Entry({ style_class: 'nook-scan-entry',
                         hint_text: 'Password', can_focus: true, x_expand: true });

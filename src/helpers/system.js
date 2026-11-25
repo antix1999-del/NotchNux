@@ -1088,6 +1088,9 @@ export class SystemHelper {
         let activeAp = null;
         try { activeAp = dev.get_active_access_point(); } catch (e) { /* ignore */ }
         let byName = new Map();
+        // SSIDs that already have a saved (non-hotspot) profile: those can be
+        // joined with a single tap, no password needed.
+        let savedSsids = new Set(this.getSavedWifiConnections().map(c => c.ssid));
         try {
             for (let ap of dev.get_access_points()) {
                 let ssid = null;
@@ -1112,7 +1115,7 @@ export class SystemHelper {
                 // survive across duplicates regardless of which is strongest —
                 // the connected AP is often not the loudest broadcaster.
                 if (!existing || signal > existing.signal) {
-                    byName.set(ssid, { ssid, signal, secure, active: active || (existing ? existing.active : false) });
+                    byName.set(ssid, { ssid, signal, secure, saved: savedSsids.has(ssid), active: active || (existing ? existing.active : false) });
                 } else if (active) {
                     existing.active = true;
                 }
@@ -1206,12 +1209,28 @@ export class SystemHelper {
                     if (raw) name = NM.utils_ssid_to_utf8(raw.get_data());
                 } catch (e) { /* ignore */ }
                 if (name === ssid) {
-                    try {
-                        this._nmClient.activate_connection_async(c, dev, null, null, (cl, res) => {
-                            try { cl.activate_connection_finish(res); done(true); }
-                            catch (e) { logDebug('WiFi activate failed', e.message); done(false, e.message); }
-                        });
-                    } catch (e) { logDebug('WiFi activate failed', e.message); done(false, e.message); }
+                    let activate = () => {
+                        try {
+                            this._nmClient.activate_connection_async(c, dev, null, null, (cl, res) => {
+                                try { cl.activate_connection_finish(res); done(true); }
+                                catch (e) { logDebug('WiFi activate failed', e.message); done(false, e.message); }
+                            });
+                        } catch (e) { logDebug('WiFi activate failed', e.message); done(false, e.message); }
+                    };
+                    // A new password typed for a saved network replaces the stored one.
+                    let sec = c.get_setting_wireless_security && c.get_setting_wireless_security();
+                    if (sec && typeof password === 'string' && password.length > 0) {
+                        try {
+                            sec.set_property('psk', password);
+                            c.commit_changes_async(true, null, (cl, res) => {
+                                try { cl.commit_changes_finish(res); }
+                                catch (e) { logDebug('WiFi password update failed', e.message); }
+                                activate();
+                            });
+                            return;
+                        } catch (e) { logDebug('WiFi password update failed', e.message); }
+                    }
+                    activate();
                     return;
                 }
             }
