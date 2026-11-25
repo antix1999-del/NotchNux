@@ -1227,7 +1227,11 @@ export const NotchNux = GObject.registerClass({
         });
         this._moreMenu.addMenuItem(settings);
 
-        if (!this._config.isFeatureEnabled('showPowerButton'))
+        // Power symbol when the menu holds the session actions, dots otherwise.
+        let showPower = this._config.isFeatureEnabled('showPowerButton');
+        this._moreButton.set_child(new St.Icon({
+            icon_name: showPower ? 'system-shutdown-symbolic' : 'view-more-symbolic', icon_size: 16 }));
+        if (!showPower)
             return;
         this._moreMenu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
         const addAction = (label, iconName, actionName) => {
