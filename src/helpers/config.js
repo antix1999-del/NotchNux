@@ -178,6 +178,8 @@ export const FEATURE_DEFS = [
     { id: 'pillStats',         label: 'Stats in the pill',    description: 'Show memory and CPU in the pill when nothing else is live. Read every 2 seconds, only while on.', default: false },
     { id: 'swipeGestures',     label: 'Swipe gestures',       description: 'Two-finger swipe sideways on the pill to skip tracks; swipe down to open, up to close.', default: true },
     { id: 'lyricsOnline',      label: 'Look up lyrics online', description: 'Fetch timed lyrics for the playing song from lrclib.net (sends the song’s title, artist, album and length).', default: true },
+    { id: 'hideOnFullscreen',  label: 'Hide on fullscreen',   description: 'Fade the notch out while a fullscreen or maximized window (or the overview) is on screen. Rest the pointer at the top centre to bring it back.', default: true },
+    { id: 'stopRecButton',     label: 'Stop-recording button', description: 'While a screen recording runs and the top bar is hidden, show a red button next to the notch to stop it.', default: true },
     { id: 'topScroll',         label: 'Scroll top edge to switch workspaces', description: 'Restore top-edge scroll-to-switch-workspace when the panel is hidden — scroll anywhere along the top of the screen to move between workspaces.', default: false }
 ];
 

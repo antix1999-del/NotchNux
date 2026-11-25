@@ -30,6 +30,7 @@ import { springTo, stopSpring, addPressFeedback } from './helpers/motion.js';
 import { installProductivity } from './tabs/productivity.js';
 import { installLedge, swapContent } from './tabs/ledge.js';
 import { installTray } from './tabs/tray.js';
+import { installAninux } from './tabs/aninux.js';
 import { logError } from './helpers/log.js';
 
 // Configuration constants
@@ -286,6 +287,9 @@ export const NotchNux = GObject.registerClass({
             this._queueUnredirectUpdate();
         });
         this._raiseToTop();
+
+        // Hide on fullscreen, stop-recording button, banners below the notch.
+        this._initAninux();
 
         // Watch the config file so edits made in the separate prefs.js process
         // apply to the live notch without a shell restart.
@@ -579,6 +583,7 @@ export const NotchNux = GObject.registerClass({
             this._restackedId = 0;
         }
         this._monitorsChangedId = 0;
+        this._destroyAninux?.();
         for (let id of this._startupResyncIds ?? [])
             GLib.Source.remove(id);
         this._startupResyncIds = [];
@@ -676,6 +681,7 @@ export const NotchNux = GObject.registerClass({
         let parent = this.get_parent();
         if (!parent) return;
         try { parent.set_child_above_sibling(this, null); } catch (e) {}
+        this._bannerAbove?.();
     }
 
     reposition() {
@@ -4408,6 +4414,10 @@ export const NotchNux = GObject.registerClass({
                 // Re-run the live refresh so the marquee starts/stops.
                 this._refreshLive();
                 break;
+            case 'hideOnFullscreen':
+            case 'stopRecButton':
+                this._onAninuxFeatureToggled(id);
+                break;
             case 'showPowerButton':
                 if (this._moreButton)
                     this._buildMoreMenu();
@@ -6667,3 +6677,4 @@ export const NotchNux = GObject.registerClass({
 installProductivity(NotchNux.prototype);
 installLedge(NotchNux.prototype);
 installTray(NotchNux.prototype);
+installAninux(NotchNux.prototype);

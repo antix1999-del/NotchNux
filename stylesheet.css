@@ -2495,3 +2495,8 @@
 .nn-cc-mirror-label {
     margin-bottom: 0;
 }
+
+/* Aninux: stop-recording button next to the notch */
+.notchnux-rec-stop { background-color: #e5484d; color: white; font-weight: bold; font-size: 14px;
+  border-radius: 999px; padding: 6px 16px; }
+.notchnux-rec-stop:hover { background-color: #ff5a60; }
