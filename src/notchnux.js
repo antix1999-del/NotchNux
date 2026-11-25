@@ -37,15 +37,15 @@ import { logError } from './helpers/log.js';
 // + privacy dots) and grows past this when the clock string is long, so the
 // time never has to ellipsize into "3:...". This is just the floor so a short
 // clock still gets a comfortably wide pill.
-const PILL_WIDTH = 260;
+const PILL_WIDTH = 290;
 // Minimum width while a track is playing (title zone present). Same deal:
 // content measurement can push wider, this is the floor.
-const PILL_WIDTH_MUSIC = 340;
+const PILL_WIDTH_MUSIC = 370;
 
 // 12-hour clock with an explicit AM/PM marker (e.g. "5:04 PM"). Forcing
 // hour12 keeps the format stable regardless of the user's locale, so the pill
 // is sized once and never clips the meridiem.
-const PILL_TIME_FMT = { hour: 'numeric', minute: '2-digit', hour12: true };
+const PILL_TIME_FMT = { hour: '2-digit', minute: '2-digit', hour12: false };
 // Weekday + day-of-month prefix shown before the time (e.g. "Thu, 19"). Kept
 // short so the whole clock stays compact and comfortably centered in the pill.
 const PILL_DATE_FMT = { weekday: 'short', day: 'numeric' };
@@ -807,7 +807,7 @@ export const NotchNux = GObject.registerClass({
         this._pillBatteryIcon = new St.Icon({
             icon_name: 'battery-good-symbolic',
             style_class: 'notchnux-pill-icon',
-            icon_size: 13,
+            icon_size: 15,
             y_align: Clutter.ActorAlign.CENTER });
         this._pillBatteryLabel = new St.Label({
             text: '',
@@ -829,7 +829,7 @@ export const NotchNux = GObject.registerClass({
         this._pillNotifIcon = new St.Icon({
             icon_name: 'preferences-system-notifications-symbolic',
             style_class: 'notchnux-pill-icon',
-            icon_size: 13,
+            icon_size: 15,
             y_align: Clutter.ActorAlign.CENTER });
         this._pillNotifCount = new St.Label({
             text: '',
@@ -849,13 +849,13 @@ export const NotchNux = GObject.registerClass({
         this._pillMic = new St.Icon({
             icon_name: 'microphone-sensitivity-high-symbolic',
             style_class: 'notchnux-pill-priv',
-            icon_size: 13,
+            icon_size: 15,
             visible: false,
             y_align: Clutter.ActorAlign.CENTER });
         this._pillCam = new St.Icon({
             icon_name: 'camera-web-symbolic',
             style_class: 'notchnux-pill-priv',
-            icon_size: 13,
+            icon_size: 15,
             visible: false,
             y_align: Clutter.ActorAlign.CENTER });
         this._pillPrivBox.add_child(this._pillMic);
@@ -1172,7 +1172,11 @@ export const NotchNux = GObject.registerClass({
                 row.add_child(this._tabCountBadge);
             }
             btn.set_child(row);
-            btn.connect('clicked', () => this._switchTab(id));
+            btn.connect('clicked', () => {
+                if (id === 'notifications' && this._openGnomeDateMenu())
+                    return;
+                this._switchTab(id);
+            });
             addPressFeedback(btn, 0.92);
             this._attachTrayTooltip(btn, tab.label, () => id !== this._activeTab);
             this._tabStrip.add_child(btn);
@@ -1780,6 +1784,33 @@ export const NotchNux = GObject.registerClass({
     _animateBlurRadius(target) {
         if (this._blurActive)
             this._glass.setBlur(target);
+    }
+
+    // Il pulsante Alerts apre il riquadro originale di GNOME (calendario, data,
+    // notifiche), agganciato al notch invece che alla barra nascosta.
+    _openGnomeDateMenu() {
+        let dm = Main.panel?.statusArea?.dateMenu;
+        let menu = dm?.menu;
+        if (!menu) return false;
+        try {
+            this.collapse();
+            let source = menu.sourceActor;
+            menu.sourceActor = this;
+            menu._boxPointer?.setSourceAlignment?.(0.5);
+            let id = menu.connect('open-state-changed', (m, open) => {
+                if (open) return;
+                m.disconnect(id);
+                m.sourceActor = source;
+            });
+            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 250, () => {
+                try { menu.open(true); } catch (e) { logError('date menu open failed', e); }
+                return GLib.SOURCE_REMOVE;
+            });
+            return true;
+        } catch (e) {
+            logError('date menu hook failed', e);
+            return false;
+        }
     }
 
     _switchTab(tabId) {
@@ -2893,10 +2924,10 @@ export const NotchNux = GObject.registerClass({
 
         // Coerce defensively: an un-unwrapped GLib.Variant would throw in set_text.
         ui.title.set_text(String(info.hasMedia ? info.title : 'Nothing playing'));
-        ui.artist.set_text(String(info.hasMedia ? info.artist : 'Start something in your player'));
+        ui.artist.set_text(String(info.hasMedia ? info.artist : 'Premi play per aprire Spotify'));
 
         ui.play.icon.icon_name = playing ? 'media-playback-pause-symbolic' : 'media-playback-start-symbolic';
-        ui.play.btn.reactive = info.hasMedia && info.canPlay !== false;
+        ui.play.btn.reactive = !info.hasMedia || info.canPlay !== false;
         ui.prev.btn.reactive = info.hasMedia && info.canPrev !== false;
         ui.next.btn.reactive = info.hasMedia && info.canNext !== false;
         // Shuffle / repeat: lit (accent) when engaged, dimmed when unsupported.
@@ -4931,7 +4962,8 @@ export const NotchNux = GObject.registerClass({
         let cls = 'nook-alert-card' + (meta.accent ? ' nook-alert-accent' : '') + (hasMore ? ' nook-alert-expandable' : '');
         // Use a button when expandable so it's focusable/clickable; a plain box
         // otherwise (keeps non-interactive cards out of the focus chain).
-        let card = hasMore
+        let canOpen = !!(m.notification || m.source);
+        let card = (hasMore || canOpen)
             ? new St.Button({ style_class: cls, x_expand: true, reactive: true, can_focus: true })
             : new St.BoxLayout({ style_class: cls, vertical: false, x_expand: true });
         // Accented cards follow the user accent instead of the CSS blue.
@@ -4941,7 +4973,7 @@ export const NotchNux = GObject.registerClass({
         }
 
         let inner = new St.BoxLayout({ vertical: false, x_expand: true });
-        if (hasMore)
+        if (hasMore || canOpen)
             card.set_child(inner);
 
         let badge = new St.Bin({ style_class: 'nook-alert-badge', y_align: Clutter.ActorAlign.START });
@@ -4954,10 +4986,14 @@ export const NotchNux = GObject.registerClass({
         let titleLabel = new St.Label({ style_class: 'nook-alert-title', x_expand: true, y_align: Clutter.ActorAlign.CENTER });
         titleRow.add_child(titleLabel);
         // Expand/collapse chevron, only on cards that have more to reveal.
-        let chevron = null;
+        let chevron = null, chevronBtn = null;
         if (hasMore) {
             chevron = new St.Icon({ icon_name: 'pan-end-symbolic', style_class: 'nook-alert-chevron', icon_size: 12, y_align: Clutter.ActorAlign.CENTER });
-            titleRow.add_child(chevron);
+            // con la notifica apribile il clic sulla scheda apre l'app: il
+            // chevron (pulsante a parte) serve per espandere il testo
+            chevronBtn = new St.Button({ child: chevron, reactive: true, can_focus: true,
+                y_align: Clutter.ActorAlign.CENTER, style: 'padding: 2px 6px;' });
+            titleRow.add_child(chevronBtn);
         }
         txt.add_child(titleRow);
         let bodyLabel = null;
@@ -4969,7 +5005,7 @@ export const NotchNux = GObject.registerClass({
             txt.add_child(bodyLabel);
         }
         inner.add_child(txt);
-        if (!hasMore)
+        if (!hasMore && !canOpen)
             card.add_child(inner);
 
         let expanded = false;
@@ -4990,16 +5026,56 @@ export const NotchNux = GObject.registerClass({
         };
         apply();
 
-        if (hasMore) {
-            card.connect('clicked', () => {
-                expanded = !expanded;
-                apply();
-                // Card grew/shrank — refit the dashboard to the new height.
-                if (this.isExpanded && !this._isExpanding)
-                    this._resizeToContent();
-            });
+        let toggle = () => {
+            expanded = !expanded;
+            apply();
+            // Card grew/shrank — refit the dashboard to the new height.
+            if (this.isExpanded && !this._isExpanding)
+                this._resizeToContent();
+        };
+        if (canOpen) {
+            card.connect('clicked', () => this._openNotification(m));
+            chevronBtn?.connect('clicked', toggle);
+        } else if (hasMore) {
+            card.connect('clicked', toggle);
         }
         return card;
+    }
+
+    // Apre la notifica come farebbe GNOME: la attiva (azione predefinita) e, se
+    // non porta a niente, porta in primo piano l'app che l'ha mandata.
+    _openNotification(m) {
+        let n = m.notification, source = m.source;
+        let done = false;
+        try {
+            if (n && typeof n.activate === 'function') {
+                n.activate();
+                done = true;
+            }
+        } catch (e) {
+            logError('notification activate failed', e);
+        }
+        // l'app della notifica (Telegram, ecc.): attivarla la mostra sempre
+        try {
+            let app = source?.app ?? null;
+            if (!app && source?.title) {
+                let sys = Shell.AppSystem.get_default();
+                let wanted = source.title.toString().toLowerCase();
+                app = sys.get_running().find(a => a.get_name().toLowerCase() === wanted) ??
+                      sys.get_installed?.().find?.(a => a.get_name().toLowerCase() === wanted) ?? null;
+                if (app && !app.activate) app = sys.lookup_app(app.get_id());
+            }
+            if (app) {
+                app.activate();
+                done = true;
+            }
+        } catch (e) {
+            logError('notification app activate failed', e);
+        }
+        if (done) {
+            this.collapse();
+            try { Main.messageTray?.close?.(); } catch (e) {}
+        }
     }
 
     // Map a notification's source name to a badge colour + glyph, so each
@@ -5405,7 +5481,8 @@ export const NotchNux = GObject.registerClass({
                     if (n?.acknowledged) continue;
                     out.push({
                         title: (n.title || source.title || 'Notification').toString(),
-                        body: (n.body || '').toString()
+                        body: (n.body || '').toString(),
+                        source, notification: n
                     });
                 }
             }

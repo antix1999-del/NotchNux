@@ -96,6 +96,10 @@ function statColor(pct) {
     return pct < 70 ? SYS.green : pct < 90 ? SYS.yellow : SYS.red;
 }
 
+function tempColor(c) {
+    return c < 70 ? SYS.green : c < 85 ? SYS.yellow : SYS.red;
+}
+
 // Swap two stacked actors the island way: the old one shrinks a touch and
 // fades out fast, the new one grows in from the top edge.
 export function swapContent(outActor, inActor) {
@@ -781,7 +785,7 @@ export const LedgeFeatures = {
             this._pillStatsBox.add_child(col);
             return v;
         };
-        this._pillMemLabel = mk('MEM');
+        this._pillMemLabel = mk('TEMP');
         this._pillCpuLabel = mk('CPU');
         this._pill.insert_child_at_index(this._pillStatsBox, 2);
     },
@@ -803,18 +807,39 @@ export const LedgeFeatures = {
         }
     },
 
+    // temperatura della CPU (pacchetto) da sysfs; piccola lettura ogni 2 secondi
+    _readCpuTemp() {
+        try {
+            if (!this._tempPath) {
+                for (let i = 0; i < 30 && !this._tempPath; i++) {
+                    let t = `/sys/class/thermal/thermal_zone${i}`;
+                    try {
+                        let [ok, type] = GLib.file_get_contents(`${t}/type`);
+                        if (ok && new TextDecoder().decode(type).trim() === 'x86_pkg_temp')
+                            this._tempPath = `${t}/temp`;
+                    } catch (e) { /* zona assente: prossima */ }
+                }
+                this._tempPath ??= '/sys/class/thermal/thermal_zone0/temp';
+            }
+            let [ok, data] = GLib.file_get_contents(this._tempPath);
+            return ok ? Math.round(parseInt(new TextDecoder().decode(data)) / 1000) : null;
+        } catch (e) {
+            return null;
+        }
+    },
+
     _startStatsTimer() {
         if (this._statsId)
             return;
         let tick = () => {
             this._system._updateCpuUsage?.();
             let cpu = Math.round(this._system.getCpuUsage?.() ?? 0);
-            let mem = Math.round(this._system.getRamUsage?.() ?? 0);
+            let mem = this._readCpuTemp();
             // No animation on the numbers: a redraw every 2 s is all it costs.
             this._pillCpuLabel.set_text(`${cpu}%`);
             this._pillCpuLabel.set_style(`color: ${statColor(cpu)};`);
-            this._pillMemLabel.set_text(`${mem}%`);
-            this._pillMemLabel.set_style(`color: ${statColor(mem)};`);
+            this._pillMemLabel.set_text(mem === null ? '–' : `${mem}°`);
+            this._pillMemLabel.set_style(mem === null ? '' : `color: ${tempColor(mem)};`);
         };
         tick();
         this._statsId = GLib.timeout_add_seconds(GLib.PRIORITY_LOW, STATS_INTERVAL_S, () => {

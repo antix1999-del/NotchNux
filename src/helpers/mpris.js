@@ -498,8 +498,46 @@ export class MprisHelper {
     }
 
     // --- Control API ---
+    // Nessun lettore attivo: apre Spotify e, appena è pronto, avvia la riproduzione.
+    _launchSpotifyAndPlay() {
+        if (this._spotifyLaunching) return;
+        this._spotifyLaunching = true;
+        try {
+            let app = Gio.DesktopAppInfo.new('com.spotify.Client.desktop') ??
+                      Gio.DesktopAppInfo.new('spotify.desktop');
+            app?.launch([], null);
+        } catch (e) {
+            logError('Spotify launch failed', e);
+        }
+        let tries = 0;
+        let attempt = () => {
+            if (this._destroyed) return GLib.SOURCE_REMOVE;
+            tries++;
+            Gio.DBus.session.call(
+                `${MPRIS_PREFIX}spotify`, MPRIS_PATH, MPRIS_PLAYER_INTERFACE, 'Play',
+                null, null, Gio.DBusCallFlags.NONE, 3000, null,
+                (conn, res) => {
+                    try {
+                        conn.call_finish(res);
+                        this._spotifyLaunching = false;
+                    } catch (e) {
+                        // non ancora pronto: ritenta per circa 45 secondi
+                        if (tries < 30)
+                            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 1500, attempt);
+                        else
+                            this._spotifyLaunching = false;
+                    }
+                });
+            return GLib.SOURCE_REMOVE;
+        };
+        GLib.timeout_add(GLib.PRIORITY_DEFAULT, 2500, attempt);
+    }
+
     playPause() {
-        if (!this.activePlayerBus) return;
+        if (!this.activePlayerBus) {
+            this._launchSpotifyAndPlay();
+            return;
+        }
         let proxy = this.players.get(this.activePlayerBus);
         if (proxy) {
             proxy.call('PlayPause', null, Gio.DBusCallFlags.NONE, -1, null, null);

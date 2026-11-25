@@ -19,7 +19,7 @@ import St from 'gi://St';
 // Solid island fill. The shoulders are painted in Cairo and must match it.
 export const ISLAND_RGB = [0, 0, 0];
 // Collapsed pill height (the alert bar is a few px taller).
-export const PILL_HEIGHT = 40;
+export const PILL_HEIGHT = 46;
 export const SHOULDER_SIZE = 12;
 
 const MASK_DECLARATIONS = `

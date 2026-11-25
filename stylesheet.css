@@ -121,7 +121,7 @@
 
 .notchnux-pill-clock {
     font-weight: bold;
-    font-size: 13px;
+    font-size: 17px;
     letter-spacing: 0.3px;
     font-feature-settings: "tnum";
     color: rgba(255, 255, 255, 0.92);
@@ -177,7 +177,7 @@
 }
 
 .notchnux-pill-battery-pct {
-    font-size: 12px;
+    font-size: 16px;
     font-weight: bold;
     color: rgba(255, 255, 255, 0.88);
 }
@@ -2106,13 +2106,13 @@
     spacing: 0;
 }
 .nn-pill-stat-cap {
-    font-size: 7.5px;
+    font-size: 10px;
     font-weight: bold;
     letter-spacing: 0.4px;
     color: rgba(255, 255, 255, 0.5);
 }
 .nn-pill-stat-val {
-    font-size: 11px;
+    font-size: 15px;
     font-weight: bold;
     font-feature-settings: "tnum";
 }
