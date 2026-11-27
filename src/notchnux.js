@@ -3214,21 +3214,46 @@ export const NotchNux = GObject.registerClass({
             track.add_child(fill);
             inner.add_child(track);
             inner.add_child(new St.Label({ text: `${d.pct}%`, style_class: 'nook-device-pct', y_align: Clutter.ActorAlign.CENTER }));
-        } else if (d.status) {
+        }
+        // Devices with a connect/disconnect call still in flight. Kept on the
+        // widget so a card rebuild mid-call still shows the progress badge.
+        this._btBusy ??= new Map();
+        let busyText = clickable ? this._btBusy.get(d.dbusPath) : null;
+        let badge = null;
+        if (!showPct && d.status) {
             // "Connected" / "Paired" badge. Paired-but-disconnected rows are
             // tappable to connect; the hover highlight on the row signals that.
             let badgeCls = 'nook-device-pct'
                 + (clickable && !d.connected ? ' nook-device-badge-paired'
                     : d.connected ? ' nook-device-badge-connected' : '');
-            inner.add_child(new St.Label({ text: d.status,
-                style_class: badgeCls, y_align: Clutter.ActorAlign.CENTER }));
+            badge = new St.Label({ text: busyText ?? d.status,
+                style_class: badgeCls, y_align: Clutter.ActorAlign.CENTER });
+            inner.add_child(badge);
         }
         if (clickable) {
             row.set_child(inner);
+            row.reactive = !busyText;
             let want = !d.connected;
             row.connect('clicked', () => {
+                if (this._btBusy.has(d.dbusPath)) return;
+                let text = want ? 'Connecting…' : 'Disconnecting…';
+                this._btBusy.set(d.dbusPath, text);
                 row.reactive = false;
-                this._system.setBluetoothConnected(d.dbusPath, want, () => {
+                if (badge) badge.text = text;
+                this._system.setBluetoothConnected(d.dbusPath, want, (ok, err) => {
+                    this._btBusy.delete(d.dbusPath);
+                    if (this._destroyed) return;
+                    if (!ok) {
+                        let reason = /InProgress/.test(err)
+                            ? 'A connection attempt is already running. Wait a few seconds and try again.'
+                            : want ? 'Check that the device is on, nearby and not in use by another phone or computer.'
+                                : err;
+                        Main.notify('NotchNux Bluetooth',
+                            `Could not ${want ? 'connect' : 'disconnect'} ${d.name}. ${reason}`);
+                    }
+                    // Force a rebuild so the badge leaves its progress text
+                    // even when nothing else changed.
+                    if (this._trayUi) this._trayUi.devSig = null;
                     this._queueTrayCardsRefresh();
                 });
             });

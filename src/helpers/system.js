@@ -1636,7 +1636,9 @@ export class SystemHelper {
             null,
             null,
             Gio.DBusCallFlags.NONE,
-            15000,
+            // Headsets can need well over 15 s; giving up early left BlueZ
+            // still connecting, so the next tap failed with InProgress.
+            30000,
             null,
             (conn, res) => {
                 try {
