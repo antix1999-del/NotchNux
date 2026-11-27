@@ -1,6 +1,8 @@
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
+import Shell from 'gi://Shell';
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import { logError } from './log.js';
 
 const DBUS_SERVICE = 'org.freedesktop.DBus';
@@ -31,6 +33,7 @@ export class MprisHelper {
 
     destroy() {
         this._destroyed = true;
+        this._releaseSpotifyWindow();
         this.onMetadataChanged = null;
         this.onPlaybackChanged = null;
         this.onPlayersListChanged = null;
@@ -498,10 +501,73 @@ export class MprisHelper {
     }
 
     // --- Control API ---
-    // Nessun lettore attivo: apre Spotify e, appena è pronto, avvia la riproduzione.
+    _spotifyApp() {
+        let apps = Shell.AppSystem.get_default();
+        return apps.lookup_app('com.spotify.Client.desktop') ??
+               apps.lookup_app('spotify.desktop');
+    }
+
+    // Riduce a icona le finestre che Spotify apre durante l'avvio dalla notch,
+    // così la musica parte senza che l'app copra lo schermo. Ogni finestra
+    // viene ridotta una sola volta; dopo 45 s si smette di controllare.
+    _holdSpotifyWindow() {
+        this._releaseSpotifyWindow();
+        this._spotifyWindowId = global.display.connect('window-created', (display, win) => {
+            let actor = win.get_compositor_private();
+            if (!actor) return;
+            // La classe della finestra è sicura solo al primo fotogramma.
+            let frameId = actor.connect('first-frame', () => {
+                actor.disconnect(frameId);
+                if (!this._spotifyWindowId) return;
+                let id = `${win.get_wm_class() ?? ''} ${win.get_gtk_application_id() ?? ''}`;
+                if (!/spotify/i.test(id)) return;
+                Main.wm.skipNextEffect(actor);
+                win.minimize();
+            });
+        });
+        this._spotifyHoldTimerId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 45, () => {
+            this._spotifyHoldTimerId = 0;
+            this._releaseSpotifyWindow();
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    _releaseSpotifyWindow() {
+        if (this._spotifyWindowId) {
+            global.display.disconnect(this._spotifyWindowId);
+            this._spotifyWindowId = 0;
+        }
+        if (this._spotifyHoldTimerId) {
+            GLib.Source.remove(this._spotifyHoldTimerId);
+            this._spotifyHoldTimerId = 0;
+        }
+    }
+
+    // Porta in primo piano il lettore attivo (Spotify se non ce n'è uno).
+    openPlayer() {
+        let bus = this.activePlayerBus;
+        if (bus && !bus.startsWith(`${MPRIS_PREFIX}spotify`)) {
+            Gio.DBus.session.call(bus, MPRIS_PATH, 'org.mpris.MediaPlayer2', 'Raise',
+                null, null, Gio.DBusCallFlags.NONE, 3000, null, null);
+            return;
+        }
+        this._releaseSpotifyWindow();
+        let app = this._spotifyApp();
+        if (!app) return;
+        let [win] = app.get_windows();
+        if (win)
+            Main.activateWindow(win);
+        else
+            app.activate();
+    }
+
+    // Nessun lettore attivo: avvia Spotify ridotto a icona e, appena è pronto, la riproduzione.
     _launchSpotifyAndPlay() {
         if (this._spotifyLaunching) return;
         this._spotifyLaunching = true;
+        // Se una finestra c'è già, la si lascia dov'è.
+        if (!this._spotifyApp()?.get_windows().length)
+            this._holdSpotifyWindow();
         try {
             let app = Gio.DesktopAppInfo.new('com.spotify.Client.desktop') ??
                       Gio.DesktopAppInfo.new('spotify.desktop');

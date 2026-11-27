@@ -2800,7 +2800,11 @@ export const NotchNux = GObject.registerClass({
         titleLabel.clutter_text.ellipsize = Pango.EllipsizeMode.END;
         let artistLabel = new St.Label({ style_class: 'nook-track-artist' });
         artistLabel.clutter_text.ellipsize = Pango.EllipsizeMode.END;
-        mid.add_child(titleLabel);
+        // Click sul titolo: apre l'app del lettore.
+        let titleBtn = new St.Button({ style_class: 'nook-track-title-btn', child: titleLabel,
+            x_align: Clutter.ActorAlign.START, can_focus: true });
+        titleBtn.connect('clicked', () => this._mpris.openPlayer());
+        mid.add_child(titleBtn);
         mid.add_child(artistLabel);
 
         // Transport controls. Each returns { btn, icon } so updates can retint
